@@ -66,7 +66,7 @@ public class Program
     static int SetSheetTitle(ExcelWorksheet sheets, string mainTitleString = "工作记录表")
     {
         var cells = sheets.Cells;
-        var mainTitle = cells["A1:E1"];
+        var mainTitle = cells["A1:F1"];
         mainTitle.Style.VerticalAlignment = ExcelVerticalAlignment.Center;
         mainTitle.Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
         mainTitle.Style.Font.Bold = true;
@@ -75,9 +75,10 @@ public class Program
         mainTitle.Merge = true;
         cells["A2"].Value = "日期";
         cells["B2"].Value = "服务橙";
-        cells["C2"].Value = "工单类型";
-        cells["D2"].Value = "工单来源";
-        cells["E2"].Value = "工单数";
+        cells["C2"].Value = "服务大区";
+        cells["D2"].Value = "工单类型";
+        cells["E2"].Value = "工单来源";
+        cells["F2"].Value = "工单数";
         return 3;
     }
 
@@ -96,13 +97,15 @@ StartRow=2
 #数据的终止行行号
 EndRow=280
 #统计结果表的输出路径
-OutputPath=.\统计.xlsx
+OutputPath=E:\workspace\统计.xlsx
 #首次跟进时间列名
 HandingTimeColumnName=O
 #工单来源列名
 SourceColumnName=K
 #工单类型列名
 TypeColumnName=C
+#工单区域
+AreaColumn=E
 #创建人列名
 CreaterColumnName=L";
         var builder = new ConfigurationBuilder()
@@ -125,6 +128,7 @@ CreaterColumnName=L";
             HandingTimeColumnName = root[nameof(Config.HandingTimeColumnName)],
             SourceColumnName = root[nameof(Config.SourceColumnName)],
             TypeColumnName = root[nameof(Config.TypeColumnName)],
+            AreaColumn = root[nameof(Config.AreaColumn)]
         };
         return config;
     }
@@ -146,7 +150,8 @@ CreaterColumnName=L";
                 工单类型 = cells[$"{config.TypeColumnName}{i}"].GetCellValue<string>(),
                 工单来源 = cells[$"{config.SourceColumnName}{i}"].GetCellValue<string>(),
                 服务橙 = cells[$"{config.CreaterColumnName}{i}"].GetCellValue<string>(),
-                首次处理时间 = DateOnly.FromDateTime(cells[$"{config.HandingTimeColumnName}{i}"].GetCellValue<DateTime>())
+                首次处理时间 = DateOnly.FromDateTime(cells[$"{config.HandingTimeColumnName}{i}"].GetCellValue<DateTime>()),
+                服务大区 = cells[$"{config.AreaColumn}{i}"].GetCellValue<string>()
             };
             list.Add(orderModel);
         }
@@ -165,11 +170,12 @@ CreaterColumnName=L";
         var rowIndex = SetSheetTitle(sheets);
         var startIndex = rowIndex;
         //计算月汇总数据
-        var groupByListWithoutDate = list.GroupBy(t => new { t.服务橙, t.工单类型, t.工单来源 })
-            .Select(t => new { t.Key.服务橙, t.Key.工单类型, t.Key.工单来源, Count = t.Count() })
+        var groupByListWithoutDate = list.GroupBy(t => new { t.服务橙, t.工单类型, t.工单来源,t.服务大区 })
+            .Select(t => new { t.Key.服务橙, t.Key.工单类型, t.Key.工单来源, Count = t.Count(),t.Key.服务大区 })
             .OrderBy(t => t.服务橙)
             .ThenBy(t => t.工单类型)
-            .ThenBy(t => t.工单来源);
+            .ThenBy(t => t.工单来源)
+            .ThenBy(t => t.服务大区);
 
         var cells = sheets.Cells;
         //月汇总数据写入sheet
@@ -177,9 +183,10 @@ CreaterColumnName=L";
         {
             cells[rowIndex, 1].Value = "月汇总";
             cells[rowIndex, 2].Value = item.服务橙;
-            cells[rowIndex, 3].Value = item.工单类型;
-            cells[rowIndex, 4].Value = item.工单来源;
-            cells[rowIndex, 5].Value = item.Count;
+            cells[rowIndex, 3].Value = item.服务大区;
+            cells[rowIndex, 4].Value = item.工单类型;
+            cells[rowIndex, 5].Value = item.工单来源;
+            cells[rowIndex, 6].Value = item.Count;
             rowIndex++;
         }
 
@@ -204,10 +211,11 @@ CreaterColumnName=L";
     static void GenerateDailySummarySheet(List<OrderModel> list, ExcelPackage package)
     {
         //计算每日汇总数据
-        var groupByListWithDate = list.GroupBy(t => new { t.首次处理时间, t.服务橙, t.工单类型, t.工单来源 })
-            .Select(t => new { t.Key.首次处理时间, t.Key.服务橙, t.Key.工单类型, t.Key.工单来源, Count = t.Count() })
+        var groupByListWithDate = list.GroupBy(t => new { t.首次处理时间, t.服务橙, t.工单类型, t.工单来源, t.服务大区 })
+            .Select(t => new { t.Key.首次处理时间, t.Key.服务橙, t.Key.工单类型, t.Key.工单来源, Count = t.Count(),t.Key.服务大区 })
             .OrderBy(t => t.首次处理时间)
-            .ThenBy(t => t.服务橙);
+            .ThenBy(t => t.服务橙)
+            .ThenBy(t=>t.服务大区);
 
         //创建新sheet
         var sheets = package.Workbook.Worksheets.Add("单日汇总");
@@ -217,18 +225,19 @@ CreaterColumnName=L";
         var cells = sheets.Cells;
         var rowIndex = SetSheetTitle(sheets);
         var dateIndexList = new List<int>
-    {
-        rowIndex
-    };
+        {
+            rowIndex
+        };
         DateOnly lastDate = groupByListWithDate.First().首次处理时间;
         //每日汇总数据写入sheet
         foreach (var item in groupByListWithDate)
         {
             cells[rowIndex, 1].Value = item.首次处理时间;
             cells[rowIndex, 2].Value = item.服务橙;
-            cells[rowIndex, 3].Value = item.工单类型;
-            cells[rowIndex, 4].Value = item.工单来源;
-            cells[rowIndex, 5].Value = item.Count;
+            cells[rowIndex, 3].Value = item.服务大区;
+            cells[rowIndex, 4].Value = item.工单类型;
+            cells[rowIndex, 5].Value = item.工单来源;
+            cells[rowIndex, 6].Value = item.Count;
             if (lastDate.Day != item.首次处理时间.Day)
             {
                 dateIndexList.Add(rowIndex);

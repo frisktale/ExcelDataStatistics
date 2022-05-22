@@ -17,5 +17,6 @@ namespace ExcelDataStatistics.Main
         public string SourceColumnName { get; set; }
         public string TypeColumnName { get; set; }
         public string CreaterColumnName { get; set; }
+        public string AreaColumn { get; set; }
     }
 }

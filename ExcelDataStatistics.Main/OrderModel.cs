@@ -27,15 +27,9 @@ public class OrderModel
     /// 工单来源
     /// </summary>
     public string 工单来源 { get; set; }
+    public string 服务大区 { get; set; }
 
     public OrderModel()
     {
-    }
-    public void SetValue(DateOnly 辅助时间, string 服务橙, string 工单类型, string 工单来源)
-    {
-        this.首次处理时间 = 辅助时间;
-        this.服务橙 = 服务橙;
-        this.工单类型 = 工单类型;
-        this.工单来源 = 工单来源;
     }
 }
