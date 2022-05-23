@@ -1,16 +1,11 @@
-﻿using ExcelDataStatistics.Main;
+﻿using ClosedXML.Excel;
 using Microsoft.Extensions.Configuration;
-using OfficeOpenXml;
-using OfficeOpenXml.Style;
-using System.Runtime.ConstrainedExecution;
 
 namespace ExcelDataStatistics.Main;
 public class Program
 {
     public static void Main(string[] args)
     {
-        ExcelPackage.LicenseContext = LicenseContext.Commercial;
-
         //获取配置
         var config = GetConfig();
         if (config == null)
@@ -20,17 +15,21 @@ public class Program
             return;
         }
         //获取数据所在的sheet
-        var xlsxFile = new FileInfo(config.FileFullPath);
-        if (!xlsxFile.Exists)
+        //var xlsxFile = new FileInfo(config.FileFullPath);
+        if (!File.Exists(config.FileFullPath))
         {
             Console.WriteLine("无法找到导入数据表，请确认路径是否填写正确");
             Console.ReadKey();
             return;
         }
-        using var package = new ExcelPackage(xlsxFile);
-        var sheet = package.Workbook.Worksheets[config.DataSheetName];
-        //读取数据
-        List<OrderModel> list = ReadingData(sheet, config);
+        List<OrderModel> list;
+        using (var workbook = new XLWorkbook(config.FileFullPath))
+        {
+            var sheet = workbook.Worksheet(config.DataSheetName);
+            //读取数据
+            list = ReadingData(sheet, config);
+        }
+
 
 
         var outputFIleinfo = new FileInfo(config.OutputPath);
@@ -40,18 +39,19 @@ public class Program
         }
 
         //创建sheet
-        using var outputPackage = new ExcelPackage(config.OutputPath);
+        using (var outputPackage = new XLWorkbook())
+        {
 
-        //创建月汇总sheet
-        GenerateMonthlySummarySheet(list, outputPackage);
+            //创建月汇总sheet
+            GenerateMonthlySummarySheet(list, outputPackage);
 
-        //创建每日汇总sheet
-        GenerateDailySummarySheet(list, outputPackage);
+            //创建每日汇总sheet
+            GenerateDailySummarySheet(list, outputPackage);
 
 
-        //保存excel
-        outputPackage.Save();
-
+            //保存excel
+            outputPackage.SaveAs(config.OutputPath);
+        }
         Console.WriteLine("统计成功");
         Console.ReadKey();
 
@@ -63,22 +63,21 @@ public class Program
     /// <param name="outputCells">需要设置标题的sheet</param>
     /// <param name="mainTitleString">表头名称</param>
     /// <returns></returns>
-    static int SetSheetTitle(ExcelWorksheet sheets, string mainTitleString = "工作记录表")
+    static int SetSheetTitle(IXLWorksheet sheets, string mainTitleString = "工作记录表")
     {
-        var cells = sheets.Cells;
-        var mainTitle = cells["A1:F1"];
-        mainTitle.Style.VerticalAlignment = ExcelVerticalAlignment.Center;
-        mainTitle.Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+        var mainTitle = sheets.Range("A1:F1");
+        mainTitle.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        mainTitle.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
         mainTitle.Style.Font.Bold = true;
-        mainTitle.Style.Font.Size = 18;
+        mainTitle.Style.Font.FontSize = 18;
         mainTitle.Value = mainTitleString;
-        mainTitle.Merge = true;
-        cells["A2"].Value = "日期";
-        cells["B2"].Value = "服务橙";
-        cells["C2"].Value = "服务大区";
-        cells["D2"].Value = "工单类型";
-        cells["E2"].Value = "工单来源";
-        cells["F2"].Value = "工单数";
+        mainTitle.Merge();
+        sheets.Cell("A2").Value = "日期";
+        sheets.Cell("B2").Value = "服务橙";
+        sheets.Cell("C2").Value = "服务大区";
+        sheets.Cell("D2").Value = "工单类型";
+        sheets.Cell("E2").Value = "工单来源";
+        sheets.Cell("F2").Value = "工单数";
         return 3;
     }
 
@@ -127,19 +126,19 @@ CreaterColumnName=L";
     /// <param name="sheet">数据源所在sheet</param>
     /// <param name="config">用户配置</param>
     /// <returns></returns>
-    static List<OrderModel> ReadingData(ExcelWorksheet sheet, Config config)
+    static List<OrderModel> ReadingData(IXLWorksheet sheet, Config config)
     {
         var list = new List<OrderModel>();
         for (int i = config.StartRow; i <= config.EndRow; i++)
         {
-            var cells = sheet.Cells;
+
             var orderModel = new OrderModel
             {
-                工单类型 = cells[$"{config.TypeColumnName}{i}"].GetCellValue<string>(),
-                工单来源 = cells[$"{config.SourceColumnName}{i}"].GetCellValue<string>(),
-                服务橙 = cells[$"{config.CreaterColumnName}{i}"].GetCellValue<string>(),
-                首次处理时间 = DateOnly.FromDateTime(cells[$"{config.HandingTimeColumnName}{i}"].GetCellValue<DateTime>()),
-                服务大区 = cells[$"{config.AreaColumn}{i}"].GetCellValue<string>()
+                工单类型 = sheet.Cell(i, config.TypeColumnName).GetValue<string>(),
+                工单来源 = sheet.Cell(i, config.SourceColumnName).GetValue<string>(),
+                服务橙 = sheet.Cell(i, config.CreaterColumnName).GetValue<string>(),
+                首次处理时间 = DateOnly.FromDateTime(sheet.Cell(i, config.HandingTimeColumnName).GetValue<DateTime>()),
+                服务大区 = sheet.Cell(i, config.AreaColumn).GetValue<string>()
             };
             list.Add(orderModel);
         }
@@ -152,43 +151,42 @@ CreaterColumnName=L";
     /// </summary>
     /// <param name="list">从数据源读取的数据</param>
     /// <param name="package">导出的excel表</param>
-    static void GenerateMonthlySummarySheet(List<OrderModel> list, ExcelPackage package)
+    static void GenerateMonthlySummarySheet(List<OrderModel> list, XLWorkbook package)
     {
-        var sheets = package.Workbook.Worksheets.Add("月汇总");
-        var rowIndex = SetSheetTitle(sheets);
+        var sheet = package.AddWorksheet("月汇总");
+        var rowIndex = SetSheetTitle(sheet);
         var startIndex = rowIndex;
         //计算月汇总数据
-        var groupByListWithoutDate = list.GroupBy(t => new { t.服务橙, t.工单类型, t.工单来源,t.服务大区 })
-            .Select(t => new { t.Key.服务橙, t.Key.工单类型, t.Key.工单来源, Count = t.Count(),t.Key.服务大区 })
+        var groupByListWithoutDate = list.GroupBy(t => new { t.服务橙, t.工单类型, t.工单来源, t.服务大区 })
+            .Select(t => new { t.Key.服务橙, t.Key.工单类型, t.Key.工单来源, Count = t.Count(), t.Key.服务大区 })
             .OrderBy(t => t.服务橙)
             .ThenBy(t => t.工单类型)
             .ThenBy(t => t.工单来源)
             .ThenBy(t => t.服务大区);
 
-        var cells = sheets.Cells;
+
         //月汇总数据写入sheet
         foreach (var item in groupByListWithoutDate)
         {
-            cells[rowIndex, 1].Value = "月汇总";
-            cells[rowIndex, 2].Value = item.服务橙;
-            cells[rowIndex, 3].Value = item.服务大区;
-            cells[rowIndex, 4].Value = item.工单类型;
-            cells[rowIndex, 5].Value = item.工单来源;
-            cells[rowIndex, 6].Value = item.Count;
+            sheet.Cell(rowIndex, 1).Value = "月汇总";
+            sheet.Cell(rowIndex, 2).Value = item.服务橙;
+            sheet.Cell(rowIndex, 3).Value = item.服务大区;
+            sheet.Cell(rowIndex, 4).Value = item.工单类型;
+            sheet.Cell(rowIndex, 5).Value = item.工单来源;
+            sheet.Cell(rowIndex, 6).Value = item.Count;
             rowIndex++;
         }
 
         //合并日期单元格
-        var dateCellRange = cells[$"A{startIndex}:A{rowIndex - 1}"];
-        dateCellRange.Merge = true;
+        var range = sheet.Range($"A{startIndex}:A{rowIndex - 1}").Merge();
 
         //所有单元格设为居中
-        var style = cells[sheets.Dimension.Address].Style;
-        style.VerticalAlignment = ExcelVerticalAlignment.Center;
-        style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+        var style = sheet.Style;
+        style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
 
         //设为自适应宽度
-        cells[sheets.Dimension.Address].AutoFitColumns();
+        sheet.Columns().AdjustToContents();
     }
 
     /// <summary>
@@ -196,22 +194,21 @@ CreaterColumnName=L";
     /// </summary>
     /// <param name="list">从数据源读取的数据</param>
     /// <param name="package">导出的excel表</param>
-    static void GenerateDailySummarySheet(List<OrderModel> list, ExcelPackage package)
+    static void GenerateDailySummarySheet(List<OrderModel> list, XLWorkbook package)
     {
         //计算每日汇总数据
         var groupByListWithDate = list.GroupBy(t => new { t.首次处理时间, t.服务橙, t.工单类型, t.工单来源, t.服务大区 })
-            .Select(t => new { t.Key.首次处理时间, t.Key.服务橙, t.Key.工单类型, t.Key.工单来源, Count = t.Count(),t.Key.服务大区 })
+            .Select(t => new { t.Key.首次处理时间, t.Key.服务橙, t.Key.工单类型, t.Key.工单来源, Count = t.Count(), t.Key.服务大区 })
             .OrderBy(t => t.首次处理时间)
             .ThenBy(t => t.服务橙)
-            .ThenBy(t=>t.服务大区);
+            .ThenBy(t => t.服务大区);
 
         //创建新sheet
-        var sheets = package.Workbook.Worksheets.Add("单日汇总");
+        var sheet = package.AddWorksheet("单日汇总");
 
 
         //绘制表头
-        var cells = sheets.Cells;
-        var rowIndex = SetSheetTitle(sheets);
+        var rowIndex = SetSheetTitle(sheet);
         var dateIndexList = new List<int>
         {
             rowIndex
@@ -220,12 +217,13 @@ CreaterColumnName=L";
         //每日汇总数据写入sheet
         foreach (var item in groupByListWithDate)
         {
-            cells[rowIndex, 1].Value = item.首次处理时间;
-            cells[rowIndex, 2].Value = item.服务橙;
-            cells[rowIndex, 3].Value = item.服务大区;
-            cells[rowIndex, 4].Value = item.工单类型;
-            cells[rowIndex, 5].Value = item.工单来源;
-            cells[rowIndex, 6].Value = item.Count;
+            IXLCell dateCell = sheet.Cell(rowIndex, 1);
+            dateCell.Value = item.首次处理时间;
+            sheet.Cell(rowIndex, 2).Value = item.服务橙;
+            sheet.Cell(rowIndex, 3).Value = item.服务大区;
+            sheet.Cell(rowIndex, 4).Value = item.工单类型;
+            sheet.Cell(rowIndex, 5).Value = item.工单来源;
+            sheet.Cell(rowIndex, 6).Value = item.Count;
             if (lastDate.Day != item.首次处理时间.Day)
             {
                 dateIndexList.Add(rowIndex);
@@ -235,20 +233,20 @@ CreaterColumnName=L";
         }
         dateIndexList.Add(rowIndex);
 
+
+
+        //所有单元格设为居中
+        var style = sheet.Style;
+        style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+
+        //设为自适应宽度
+        sheet.ColumnsUsed().AdjustToContents();
+
         //合并相同日期单元格
         for (int i = 0; i < dateIndexList.Count - 1; i++)
         {
-            var dateCellRange2 = cells[$"A{dateIndexList[i]}:A{dateIndexList[i + 1] - 1}"];
-            dateCellRange2.Merge = true;
+            sheet.Range($"A{dateIndexList[i]}:A{dateIndexList[i + 1] - 1}").Merge();
         }
-
-        //所有单元格设为居中
-        var style = cells[sheets.Dimension.Address].Style;
-        style.VerticalAlignment = ExcelVerticalAlignment.Center;
-        style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
-
-        //设为自适应宽度
-        cells[sheets.Dimension.Address].AutoFitColumns();
     }
 }
-//设置许可
