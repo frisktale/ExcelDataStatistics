@@ -116,7 +116,7 @@ CreaterColumnName=L";
             File.WriteAllText("config.ini", sampleConfigFile);
             return null;
         }
-        var root = builder.Build() as IConfiguration;
+        var root = builder.Build();
         var config = root.Get<Config>();
         return config;
     }
