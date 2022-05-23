@@ -116,20 +116,8 @@ CreaterColumnName=L";
             File.WriteAllText("config.ini", sampleConfigFile);
             return null;
         }
-        var root = builder.Build();
-        var config = new Config
-        {
-            FileFullPath = root[nameof(Config.FileFullPath)],
-            DataSheetName = root[nameof(Config.DataSheetName)],
-            StartRow = Convert.ToInt32(root[nameof(Config.StartRow)]),
-            EndRow = Convert.ToInt32(root[nameof(Config.EndRow)]),
-            OutputPath = root[nameof(Config.OutputPath)],
-            CreaterColumnName = root[nameof(Config.CreaterColumnName)],
-            HandingTimeColumnName = root[nameof(Config.HandingTimeColumnName)],
-            SourceColumnName = root[nameof(Config.SourceColumnName)],
-            TypeColumnName = root[nameof(Config.TypeColumnName)],
-            AreaColumn = root[nameof(Config.AreaColumn)]
-        };
+        var root = builder.Build() as IConfiguration;
+        var config = root.Get<Config>();
         return config;
     }
 
