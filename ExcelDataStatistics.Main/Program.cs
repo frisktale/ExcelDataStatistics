@@ -11,7 +11,7 @@ public class Program
     {
         try
         {
-            ExcelPackage.LicenseContext = LicenseContext.Commercial;
+            ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
 
             //获取配置
             var config = GetConfig();
