@@ -14,7 +14,7 @@ public class OrderModel
     /// <summary>
     /// 工单辅助时间
     /// </summary>
-    public DateOnly 首次处理时间 { get; set; }
+    public DateOnly? 首次处理时间 { get; set; }
     /// <summary>
     /// 服务橙
     /// </summary>

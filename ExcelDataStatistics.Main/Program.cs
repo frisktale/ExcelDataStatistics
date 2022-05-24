@@ -9,51 +9,61 @@ public class Program
 {
     public static void Main(string[] args)
     {
-        ExcelPackage.LicenseContext = LicenseContext.Commercial;
-
-        //获取配置
-        var config = GetConfig();
-        if (config == null)
+        try
         {
-            Console.WriteLine("已生成配置文件，请填写配置文件后再运行程序");
+            ExcelPackage.LicenseContext = LicenseContext.Commercial;
+
+            //获取配置
+            var config = GetConfig();
+            if (config == null)
+            {
+                Console.WriteLine("已生成配置文件，请填写配置文件后再运行程序");
+                return;
+            }
+            //获取数据所在的sheet
+            var xlsxFile = new FileInfo(config.FileFullPath);
+            if (!xlsxFile.Exists)
+            {
+                Console.WriteLine("无法找到导入数据表，请确认路径是否填写正确");
+                return;
+            }
+            using var package = new ExcelPackage(xlsxFile);
+            var sheet = package.Workbook.Worksheets[config.DataSheetName];
+            //读取数据
+            List<OrderModel> list = ReadingData(sheet, config);
+
+
+            var outputFIleinfo = new FileInfo(config.OutputPath);
+            if (outputFIleinfo.Exists)
+            {
+                outputFIleinfo.Delete();
+            }
+
+            //创建sheet
+            using var outputPackage = new ExcelPackage(config.OutputPath);
+
+            //创建月汇总sheet
+            GenerateMonthlySummarySheet(list, outputPackage);
+
+            //创建每日汇总sheet
+            GenerateDailySummarySheet(list, outputPackage);
+
+
+            //保存excel
+            outputPackage.Save();
+
+            Console.WriteLine("统计成功");
+
+        }
+        catch (Exception e)
+        {
+
+            throw;
+        }
+        finally
+        {
             Console.ReadKey();
-            return;
         }
-        //获取数据所在的sheet
-        var xlsxFile = new FileInfo(config.FileFullPath);
-        if (!xlsxFile.Exists)
-        {
-            Console.WriteLine("无法找到导入数据表，请确认路径是否填写正确");
-            Console.ReadKey();
-            return;
-        }
-        using var package = new ExcelPackage(xlsxFile);
-        var sheet = package.Workbook.Worksheets[config.DataSheetName];
-        //读取数据
-        List<OrderModel> list = ReadingData(sheet, config);
-
-
-        var outputFIleinfo = new FileInfo(config.OutputPath);
-        if (outputFIleinfo.Exists)
-        {
-            outputFIleinfo.Delete();
-        }
-
-        //创建sheet
-        using var outputPackage = new ExcelPackage(config.OutputPath);
-
-        //创建月汇总sheet
-        GenerateMonthlySummarySheet(list, outputPackage);
-
-        //创建每日汇总sheet
-        GenerateDailySummarySheet(list, outputPackage);
-
-
-        //保存excel
-        outputPackage.Save();
-
-        Console.WriteLine("统计成功");
-        Console.ReadKey();
 
     }
 
@@ -133,12 +143,13 @@ CreaterColumnName=L";
         for (int i = config.StartRow; i <= config.EndRow; i++)
         {
             var cells = sheet.Cells;
+            var datetime = cells[$"{config.HandingTimeColumnName}{i}"].GetCellValue<DateTime?>();
             var orderModel = new OrderModel
             {
                 工单类型 = cells[$"{config.TypeColumnName}{i}"].GetCellValue<string>(),
                 工单来源 = cells[$"{config.SourceColumnName}{i}"].GetCellValue<string>(),
                 服务橙 = cells[$"{config.CreaterColumnName}{i}"].GetCellValue<string>(),
-                首次处理时间 = DateOnly.FromDateTime(cells[$"{config.HandingTimeColumnName}{i}"].GetCellValue<DateTime>()),
+                首次处理时间 = datetime.HasValue ? DateOnly.FromDateTime(datetime.Value) : null,
                 服务大区 = cells[$"{config.AreaColumn}{i}"].GetCellValue<string>()
             };
             list.Add(orderModel);
@@ -158,8 +169,8 @@ CreaterColumnName=L";
         var rowIndex = SetSheetTitle(sheets);
         var startIndex = rowIndex;
         //计算月汇总数据
-        var groupByListWithoutDate = list.GroupBy(t => new { t.服务橙, t.工单类型, t.工单来源,t.服务大区 })
-            .Select(t => new { t.Key.服务橙, t.Key.工单类型, t.Key.工单来源, Count = t.Count(),t.Key.服务大区 })
+        var groupByListWithoutDate = list.GroupBy(t => new { t.服务橙, t.工单类型, t.工单来源, t.服务大区 })
+            .Select(t => new { t.Key.服务橙, t.Key.工单类型, t.Key.工单来源, Count = t.Count(), t.Key.服务大区 })
             .OrderBy(t => t.服务橙)
             .ThenBy(t => t.工单类型)
             .ThenBy(t => t.工单来源)
@@ -200,10 +211,10 @@ CreaterColumnName=L";
     {
         //计算每日汇总数据
         var groupByListWithDate = list.GroupBy(t => new { t.首次处理时间, t.服务橙, t.工单类型, t.工单来源, t.服务大区 })
-            .Select(t => new { t.Key.首次处理时间, t.Key.服务橙, t.Key.工单类型, t.Key.工单来源, Count = t.Count(),t.Key.服务大区 })
+            .Select(t => new { t.Key.首次处理时间, t.Key.服务橙, t.Key.工单类型, t.Key.工单来源, Count = t.Count(), t.Key.服务大区 })
             .OrderBy(t => t.首次处理时间)
             .ThenBy(t => t.服务橙)
-            .ThenBy(t=>t.服务大区);
+            .ThenBy(t => t.服务大区);
 
         //创建新sheet
         var sheets = package.Workbook.Worksheets.Add("单日汇总");
@@ -216,7 +227,7 @@ CreaterColumnName=L";
         {
             rowIndex
         };
-        DateOnly lastDate = groupByListWithDate.First().首次处理时间;
+        DateOnly? lastDate = groupByListWithDate.First().首次处理时间;
         //每日汇总数据写入sheet
         foreach (var item in groupByListWithDate)
         {
@@ -226,7 +237,7 @@ CreaterColumnName=L";
             cells[rowIndex, 4].Value = item.工单类型;
             cells[rowIndex, 5].Value = item.工单来源;
             cells[rowIndex, 6].Value = item.Count;
-            if (lastDate.Day != item.首次处理时间.Day)
+            if (lastDate?.Day != item.首次处理时间?.Day)
             {
                 dateIndexList.Add(rowIndex);
                 lastDate = item.首次处理时间;
