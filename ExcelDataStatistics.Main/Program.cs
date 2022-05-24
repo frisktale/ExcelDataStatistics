@@ -6,54 +6,64 @@ public class Program
 {
     public static void Main(string[] args)
     {
+
+        try
+        {
+            var config = GetConfig();
+            if (config == null)
+            {
+                Console.WriteLine("已生成配置文件，请填写配置文件后再运行程序");
+                return;
+            }
+            //获取数据所在的sheet
+            //var xlsxFile = new FileInfo(config.FileFullPath);
+            if (!File.Exists(config.FileFullPath))
+            {
+                Console.WriteLine("无法找到导入数据表，请确认路径是否填写正确");
+                return;
+            }
+            List<OrderModel> list;
+            using (var workbook = new XLWorkbook(config.FileFullPath))
+            {
+                var sheet = workbook.Worksheet(config.DataSheetName);
+                //读取数据
+                list = ReadingData(sheet, config);
+            }
+
+
+
+            var outputFIleinfo = new FileInfo(config.OutputPath);
+            if (outputFIleinfo.Exists)
+            {
+                outputFIleinfo.Delete();
+            }
+
+            //创建sheet
+            using (var outputPackage = new XLWorkbook())
+            {
+
+                //创建月汇总sheet
+                GenerateMonthlySummarySheet(list, outputPackage);
+
+                //创建每日汇总sheet
+                GenerateDailySummarySheet(list, outputPackage);
+
+
+                //保存excel
+                outputPackage.SaveAs(config.OutputPath);
+            }
+            Console.WriteLine("统计成功");
+        }
+        catch (Exception)
+        {
+
+            throw;
+        }
+        finally
+        {
+            Console.ReadKey();
+        }
         //获取配置
-        var config = GetConfig();
-        if (config == null)
-        {
-            Console.WriteLine("已生成配置文件，请填写配置文件后再运行程序");
-            Console.ReadKey();
-            return;
-        }
-        //获取数据所在的sheet
-        //var xlsxFile = new FileInfo(config.FileFullPath);
-        if (!File.Exists(config.FileFullPath))
-        {
-            Console.WriteLine("无法找到导入数据表，请确认路径是否填写正确");
-            Console.ReadKey();
-            return;
-        }
-        List<OrderModel> list;
-        using (var workbook = new XLWorkbook(config.FileFullPath))
-        {
-            var sheet = workbook.Worksheet(config.DataSheetName);
-            //读取数据
-            list = ReadingData(sheet, config);
-        }
-
-
-
-        var outputFIleinfo = new FileInfo(config.OutputPath);
-        if (outputFIleinfo.Exists)
-        {
-            outputFIleinfo.Delete();
-        }
-
-        //创建sheet
-        using (var outputPackage = new XLWorkbook())
-        {
-
-            //创建月汇总sheet
-            GenerateMonthlySummarySheet(list, outputPackage);
-
-            //创建每日汇总sheet
-            GenerateDailySummarySheet(list, outputPackage);
-
-
-            //保存excel
-            outputPackage.SaveAs(config.OutputPath);
-        }
-        Console.WriteLine("统计成功");
-        Console.ReadKey();
 
     }
 
