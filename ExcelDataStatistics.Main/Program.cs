@@ -55,11 +55,6 @@ public class Program
             Console.WriteLine("统计成功");
 
         }
-        catch (Exception e)
-        {
-
-            throw;
-        }
         finally
         {
             Console.ReadKey();
